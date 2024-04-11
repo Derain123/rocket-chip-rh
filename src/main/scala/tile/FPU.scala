@@ -205,6 +205,14 @@ class FPUCoreIO(implicit p: Parameters) extends CoreBundle()(p) {
   val sboard_clra = Output(UInt(5.W))
 
   val keep_clock_enabled = Input(Bool())
+
+  //=========================  RAIN_runahead  =================================//
+  def rcu_params = RCU_Params(64)
+  val rcu = Flipped(new RCU_IO(rcu_params))
+  val fp_in = Input(Vec(32,UInt(65.W)))
+  val fp_out = Output(Vec(32,UInt(65.W)))
+  //=========================  RAIN_runahead  =================================//
+
 }
 
 class FPUIO(implicit p: Parameters) extends FPUCoreIO ()(p) {
@@ -951,6 +959,16 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
     io.cp_resp.valid := true.B
   }
   io.cp_req.ready := !ex_reg_valid
+
+      //=============================  RAIN_runahead  =================================================
+    // val rcu = Module(new RCU(RCU_Params(xLen)))
+    //   for (i <- 0 until 32) {
+    //     io.fp_out(i):= regfile(i)
+    //   }
+    //   for (j <- 0 until 32) {
+    //     regfile(j) := io.fp_in(j)
+    //   }
+    //=============================  RAIN_runahead  =================================================
 
   val wb_toint_valid = wb_reg_valid && wb_ctrl.toint
   val wb_toint_exc = RegEnable(fpiu.io.out.bits.exc, mem_ctrl.toint)
