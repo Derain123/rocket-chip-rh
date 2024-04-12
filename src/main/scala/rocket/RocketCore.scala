@@ -757,34 +757,49 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     val stallpc_flag = (wb_reg_pc === insert_stallpc) && (wb_dcache_miss === 1.U)
     // printf("stallpc_flag is %d",stallpc_flag)
 
-    // 计算前后地址范围
-    val range_offset_up = 4.U(32.W) // 前后范围的偏移量
+    // addr_range
+    val range_offset_up = 4.U(32.W) // offset
     val range_offset = 2.U(32.W)
     val lower_bound = insert_stallpc - range_offset
     val upper_bound = insert_stallpc + range_offset_up
-    //miss信号下降沿
+    //miss-fallingedge-define
     val miss_fallingedge = Wire(Bool())
+    val miss_risingedge = Wire(Bool())
 
     val prevl1miss = RegNext(wb_dcache_miss, init = false.B)
+    val prevl1miss_trig = RegNext(stallpc_flag, init = false.B)
     miss_fallingedge := prevl1miss && !wb_dcache_miss
+    miss_risingedge := !prevl1miss_trig && stallpc_flag
+    
     val databack_flag = (wb_reg_pc >= lower_bound && wb_reg_pc <= upper_bound) && (miss_fallingedge === 1.U)
-    rcu.io.l2miss := stallpc_flag                   
+    // rcu.io.l2miss := stallpc_flag   
+    rcu.io.l2miss := miss_risingedge                
     rcu.io.ipc := wb_reg_pc
     rcu.io.wb_valid := databack_flag
     //wb_reg_flush_pipe := rcu.io.stall_pipe
-
+    // when(rcu.io.runahead_trig){
       for (i <- 0 until 31) {
         rcu.io.rf_in(i) := rf.read(i.U)
       }
+    // }
     when(rcu.io.runahead_backflag){
       for (j <- 0 until 31) {
         rf.write(j.U, rcu.io.rf_out(j))
       }
     }
 
+    //dontTouch
     dontTouch(stallpc_flag)
     dontTouch(databack_flag)
+    dontTouch(prevl1miss)
+    dontTouch(prevl1miss_trig)
     dontTouch(miss_fallingedge)
+    dontTouch(miss_risingedge)
+    // dontTouch(ctrl_stalld)
+
+  //====================  RAIN_runahead-l2miss  =================================/
+  io.pc     := wb_reg_pc
+  //====================  RAIN_runahead-l2miss  =================================/
 
  //====================  RAIN_runahead  =========================================================//
 

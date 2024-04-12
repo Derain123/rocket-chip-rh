@@ -230,6 +230,11 @@ trait DefaultTileContextType
   with HasTileInputConstants
 { this: BaseSubsystem =>
   val debugNode: IntSyncOutwardNode
+
+//===== rrunahead: Start ====//
+  val ins_outtile = BundleBridgeIdentityNode[UInt]()
+//===== rrunahead: End   ====//
+
 } // TODO: ideally this bound would be softened to LazyModule
 
 /** Standardized interface by which parameterized tiles can be attached to contexts containing interconnect resources.
@@ -261,7 +266,18 @@ trait CanAttachTile {
     connectPRC(domain, context)
     connectOutputNotifications(domain, context)
     connectInputConstants(domain, context)
+    //===== rrunahead: Start ====//
+    connectionsl2(domain,context)
+    //===== rrunahead: End   ====//
+
   }
+
+  //===== rrunahead: Start ====//
+  def connectionsl2(domain: TilePRCIDomain[TileType], context: TileContextType): Unit = {
+    implicit val p = context.p
+    context.ins_outtile := domain.tile.ins_tile.get
+  }
+  //===== rrunahead: End   ====//
 
   /** Connect the port where the tile is the master to a TileLink interconnect. */
   def connectMasterPorts(domain: TilePRCIDomain[TileType], context: Attachable): Unit = {

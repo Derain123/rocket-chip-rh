@@ -254,6 +254,10 @@ abstract class BaseTile private (val crossing: ClockCrossingType, q: Parameters)
   val resetVectorNode: BundleBridgeInwardNode[UInt] =
     resetVectorSinkNode := resetVectorNexusNode := BundleBridgeNameNode("reset_vector")
 
+  //===== rrunahead: Start ====//
+  val ins_tile = Some(BundleBridgeSource[UInt](Some(() => UInt(40.W))))
+  //===== rrunahead: End   ====//
+
   /** Nodes for connecting NMI interrupt sources and vectors into the tile */
   val nmiNexusNode: BundleBridgeNode[NMI] = BundleBroadcast[NMI]()
   val nmiSinkNode = BundleBridgeSink[NMI](Some(() => new NMI(visiblePhysAddrBits)))

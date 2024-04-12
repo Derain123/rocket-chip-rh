@@ -31,6 +31,7 @@ class RCU_IO (params: RCU_Params) extends Bundle {
   val ipc = Input(UInt(40.W))
   val rf_out = Output(Vec(31,UInt(params.xLen.W)))
   val runahead_backflag = Output(Bool())
+  val runahead_trig = Output(Bool())
   // val fp_out = Output(Vec(32,UInt(params.xLen.W+1)))    //floating point register file
   // val stall_pipe = Output(Bool())
   // val opc = Output(UInt(40.W))
@@ -54,6 +55,7 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
     io.rf_out(i) := 0.U(params.xLen.W)
   }
   io.runahead_backflag := false.B
+  io.runahead_trig := false.B
   dontTouch(io)
   dontTouch(rf_reg)
 
@@ -82,10 +84,9 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
   //==========================================================method 2
 
   //==========================================================method 1
-
-  //==========================================================method 1
   when(io.l2miss) {
     for (i <- 0 until 31) {
+      io.runahead_trig := true.B
       rf_reg(i) := io.rf_in(i)
     }
     // for (i <- 0 until 32) {

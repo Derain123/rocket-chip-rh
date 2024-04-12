@@ -184,6 +184,19 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   // TODO figure out how to move the below into their respective mix-ins
   dcacheArb.io.requestor <> dcachePorts.toSeq
   ptw.io.requestor <> ptwPorts.toSeq
+
+  //===== RAIN_runahead: Start ====//
+  // val rrunahead = Module(new zzguardrr)
+  // rrunahead.io.valid      := core.io.valid
+  // rrunahead.io.din_pc     := core.io.pc
+  // rrunahead.io.din_ins    := core.io.ins
+  // rrunahead.io.din_wdata  := core.io.wdata
+  // rrunahead.io.din_mdata  := core.io.mdata
+
+  outer.ins_tile.get.bundle := core.io.pc
+  
+  //===== RAIN_runahead: End   ====//
+
 }
 
 trait HasFpuOpt { this: RocketTileModuleImp =>
