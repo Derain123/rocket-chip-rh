@@ -233,6 +233,9 @@ trait DefaultTileContextType
 
 //===== rrunahead: Start ====//
   val ins_outtile = BundleBridgeIdentityNode[UInt]()
+  val ins_outtile_hit = BundleBridgeIdentityNode[UInt]()
+  // dontTouch(ins_outtile)
+  // dontTouch(ins_outtile_hit)
 //===== rrunahead: End   ====//
 
 } // TODO: ideally this bound would be softened to LazyModule
@@ -268,6 +271,7 @@ trait CanAttachTile {
     connectInputConstants(domain, context)
     //===== rrunahead: Start ====//
     connectionsl2(domain,context)
+    connectionsl2hit(domain,context)
     //===== rrunahead: End   ====//
 
   }
@@ -276,6 +280,14 @@ trait CanAttachTile {
   def connectionsl2(domain: TilePRCIDomain[TileType], context: TileContextType): Unit = {
     implicit val p = context.p
     context.ins_outtile := domain.tile.ins_tile.get
+    // dontTouch(context.ins_outtile)
+  }
+
+  def connectionsl2hit(domain: TilePRCIDomain[TileType], context: TileContextType): Unit = {
+    implicit val p = context.p
+    context.ins_outtile_hit := domain.tile.ins_tile_hit.get
+    // domain.tile.ins_tile_hit.get := context.ins_outtile_hit
+    // dontTouch(context.ins_outtile_hit)
   }
   //===== rrunahead: End   ====//
 

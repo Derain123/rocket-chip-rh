@@ -256,6 +256,9 @@ abstract class BaseTile private (val crossing: ClockCrossingType, q: Parameters)
 
   //===== rrunahead: Start ====//
   val ins_tile = Some(BundleBridgeSource[UInt](Some(() => UInt(40.W))))
+  val ins_tile_hit = Some(BundleBridgeSource[UInt](Some(() => Bool())))
+  // dontTouch(ins_tile)
+
   //===== rrunahead: End   ====//
 
   /** Nodes for connecting NMI interrupt sources and vectors into the tile */

@@ -7,6 +7,13 @@ import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
+import chisel3._
+import chisel3.experimental.dataview.BundleUpcastable
+import chisel3.util._
+import freechips.rocketchip.subsystem.{BaseSubsystem, HasTiles}
+import freechips.rocketchip.subsystem.{BaseSubsystem, BankedL2Params}
+import freechips.rocketchip.prci.{ClockSinkDomain}
+import org.chipsalliance.cde.config.{Field, Parameters}
 
 case class SystemBusParams(
     beatBytes: Int,
@@ -41,6 +48,17 @@ class SystemBus(params: SystemBusParams, name: String = "system_bus")(implicit p
   val inwardNode: TLInwardNode = system_bus_xbar.node :=* TLFIFOFixer(TLFIFOFixer.allVolatile) :=* replicator.map(_.node).getOrElse(TLTempNode())
   val outwardNode: TLOutwardNode = system_bus_xbar.node
   def busView: TLEdge = system_bus_xbar.node.edges.in.head
+
+  //===== rrunahead: Start ====//
+  // def attach(subsystem: BaseSubsystem with HasTiles with BankedL2Params)
+  // (implicit p: Parameters){
+  //   val l2_hit_sbus = BundleBridgeSink[UInt](Some(() => Bool()))
+  //   // subsystem.ins_outtile_hit := l2_hit_sbus
+  // }
+
+
+  //===== rrunahead: End ====//
+
 
   val builtInDevices: BuiltInDevices = BuiltInDevices.attach(params, outwardNode)
 }

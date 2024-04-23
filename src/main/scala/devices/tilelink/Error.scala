@@ -40,6 +40,8 @@ class TLError(params: DevNullParams, buffer: Boolean = true, beatBytes: Int = 4)
     da.bits.denied  := true.B
     da.bits.data    := 0.U
     da.bits.corrupt := edge.hasData(da.bits)
+    da.bits.hit     := true.B
+
 
     if (params.acquire) {
       val c = if (buffer) {Queue(in.c, 1)} else in.c
@@ -64,6 +66,7 @@ class TLError(params: DevNullParams, buffer: Boolean = true, beatBytes: Int = 4)
       dc.bits.denied  := false.B
       dc.bits.data    := 0.U
       dc.bits.corrupt := false.B
+      dc.bits.hit     := true.B
 
       // Combine response channels
       TLArbiter.lowest(edge, in.d, dc, da)

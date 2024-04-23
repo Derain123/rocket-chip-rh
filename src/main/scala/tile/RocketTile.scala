@@ -194,6 +194,8 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   // rrunahead.io.din_mdata  := core.io.mdata
 
   outer.ins_tile.get.bundle := core.io.pc
+  // core.io.hit := outer.ins_tile_hit.get.bundle
+  outer.ins_tile_hit.get.bundle := core.io.hit
   
   //===== RAIN_runahead: End   ====//
 

@@ -178,6 +178,8 @@ trait HasCoreIO extends HasTileParameters {
 
     //===== rrunahead: Start ====//
     val pc    = Output(UInt(40.W))  //wb_reg_pc
+    // val hit   = Input(Bool())
+    val hit   = Output(Bool())
     //===== rrunahead: End   ====//
   }
 }

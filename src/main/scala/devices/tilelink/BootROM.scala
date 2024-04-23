@@ -73,8 +73,14 @@ object BootROM {
     bootROMDomainWrapper.clockNode := tlbus.fixedClockNode
 
     val bootROMResetVectorSourceNode = BundleBridgeSource[UInt]()
+  //===== rrunahead: Start ====//
     val ins_counter = BundleBridgeSink[UInt]()
     ins_counter := subsystem.ins_outtile
+    val ins_counter_hit = BundleBridgeSink[UInt]()
+    ins_counter_hit := subsystem.ins_outtile_hit
+
+    // dontTouch(ins_counter)
+  //===== rrunahead: End ====//
 
     lazy val contents = {
       val romdata = Files.readAllBytes(Paths.get(params.contentFileName))

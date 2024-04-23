@@ -635,6 +635,7 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    d.hit     := true.B
     d
   }
 
@@ -663,6 +664,7 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    d.hit := true.B
     d
   }
 
@@ -776,6 +778,7 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    d.hit     := true.B
     d
   }
 
@@ -792,6 +795,7 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := data
     d.corrupt := corrupt
+    d.hit     := true.B
     d
   }
 
