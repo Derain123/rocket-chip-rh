@@ -177,6 +177,7 @@ trait HasCoreIO extends HasTileParameters {
     val traceStall = Bool().asInput
 
     //===== rrunahead: Start ====//
+    val rdmem = new HellaCacheIO 
     val pc    = Output(UInt(40.W))  //wb_reg_pc
     // val hit   = Input(Bool())
     val hit   = Output(Bool())

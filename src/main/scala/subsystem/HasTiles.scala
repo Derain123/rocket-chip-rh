@@ -233,7 +233,7 @@ trait DefaultTileContextType
 
 //===== rrunahead: Start ====//
   val ins_outtile = BundleBridgeIdentityNode[UInt]()
-  val ins_outtile_hit = BundleBridgeIdentityNode[UInt]()
+  val ins_outtile_hit = BundleBridgeEphemeralNode[UInt]()
   // dontTouch(ins_outtile)
   // dontTouch(ins_outtile_hit)
 //===== rrunahead: End   ====//

@@ -574,6 +574,58 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_slow_bypass = ex_ctrl.mem_cmd === M_XSC || ex_reg_mem_size < 2.U
   val ex_sfence = usingVM.B && ex_ctrl.mem && (ex_ctrl.mem_cmd === M_SFENCE || ex_ctrl.mem_cmd === M_HFENCEV || ex_ctrl.mem_cmd === M_HFENCEG)
 
+    //dcache miss counter
+  val counter = RegInit(0.U(32.W))
+  val miss_detected = RegInit(false.B)
+  val miss_events = RegInit(0.U(32.W))
+
+  when(reset.asBool()) {
+    counter := 0.U
+    miss_detected := false.B
+    miss_events := 0.U // 重置miss事件计数器
+}.otherwise {
+    when(wb_dcache_miss) {
+        // 检测到miss
+        when(!miss_detected) {
+            miss_detected := true.B
+        }
+        counter := counter + 1.U
+    }.elsewhen(miss_detected) {
+        // miss信号从高变低
+        when(counter > 2.U) {
+            printf(p"DCache miss lasted for ${counter} cycles\n")
+            miss_events := miss_events + 40.U // 当miss的周期大于3时才增加miss事件计数
+        }
+        counter := 0.U
+        miss_detected := false.B
+    }
+}
+printf(p"Total DCache miss events: ${miss_events}\n")
+
+
+  //dcache access count
+  val access_detected = RegInit(false.B)
+  val access_events = RegInit(0.U(32.W))
+
+    when(reset.asBool()) {    
+    access_detected := false.B
+    access_events := 0.U // 重置access事件计数器
+}.otherwise {
+    when(io.dmem.req.valid) {
+        // access count
+        when(!access_detected) {
+            access_detected := true.B
+            access_events := access_events + 1.U // 在首次检测到access时增加access事件计数
+        }
+    }.elsewhen(access_detected) {
+        // access信号从高变低，然后重置flag
+        printf(p"DCache access detect!\n")
+        access_detected := false.B
+    }
+}
+printf(p"Total DCache access events: ${access_events}\n")
+
+
   val (ex_xcpt, ex_cause) = checkExceptions(List(
     (ex_reg_xcpt_interrupt || ex_reg_xcpt, ex_reg_cause)))
 
@@ -947,6 +999,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
 
     checkHazards(fp_hazard_targets, fp_sboard.read _)
   } else false.B
+
+  // val fp_miss_flag = Wire(Bool())
+  // fp_miss_flag := wb_dcache_miss && wb_ctrl.wfd && wb_valid
+  printf("independent load run flag: %d\n",wb_dcache_miss && wb_ctrl.wfd && wb_valid)
 
   val dcache_blocked = {
     // speculate that a blocked D$ will unblock the cycle after a Grant
