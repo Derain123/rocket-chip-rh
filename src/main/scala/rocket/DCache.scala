@@ -173,6 +173,8 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   // val l2_hit = tl_out_b.bits.hit
   val l2_hit = Wire(chiselTypeOf(tl_out.b.bits.hit))
   l2_hit := tl_out.b.bits.hit
+  io.cpu.l2hit := tl_out.b.bits.hit
+  dontTouch(io.cpu.l2hit)
   dontTouch(l2_hit)
   val tl_d_data_encoded1 = Wire(chiselTypeOf(tl_out.d.bits.data))
   tl_d_data_encoded1 := tl_out.d.bits.data

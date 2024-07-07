@@ -181,6 +181,7 @@ class HellaCacheIO(implicit p: Parameters) extends CoreBundle()(p) {
   val uncached_resp = tileParams.dcache.get.separateUncachedResp.option(Flipped(Decoupled(new HellaCacheResp)))
   val ordered = Input(Bool())
   val perf = Input(new HellaCachePerfEvents())
+  val l2hit = Input(Bool())
 
   val keep_clock_enabled = Output(Bool()) // should D$ avoid clock-gating itself?
   val clock_enabled = Input(Bool()) // is D$ currently being clocked?

@@ -817,7 +817,7 @@ printf(p"Total DCache access events: ${access_events}\n")
     //miss-fallingedge-define
     val miss_fallingedge = Wire(Bool())
     val miss_risingedge = Wire(Bool())
-
+    val l2hit = io.dmem.l2hit
     val prevl1miss = RegNext(wb_dcache_miss, init = false.B)
     val prevl1miss_trig = RegNext(stallpc_flag, init = false.B)
     miss_fallingedge := prevl1miss && !wb_dcache_miss
