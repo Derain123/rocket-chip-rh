@@ -32,6 +32,7 @@ class RCU_IO (params: RCU_Params) extends Bundle {
   val rf_out = Output(Vec(31,UInt(params.xLen.W)))
   val runahead_backflag = Output(Bool())
   val runahead_trig = Output(Bool())
+  val runahead_flag = Output(Bool())
   // val fp_out = Output(Vec(32,UInt(params.xLen.W+1)))    //floating point register file
   // val stall_pipe = Output(Bool())
   // val opc = Output(UInt(40.W))
@@ -56,37 +57,16 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
   }
   io.runahead_backflag := false.B
   io.runahead_trig := false.B
+  val rh_flag = RegInit(0.U(1.W))
+  dontTouch(rh_flag)
   dontTouch(io)
   dontTouch(rf_reg)
-
-  //==========================================================method 2
-  // 状态机逻辑
-  // val sIdle :: sCopyRegs :: sWriteBack :: Nil = Enum(3)
-  // val state = RegInit(sIdle)
-  // switch(state) {
-  //   is(sIdle) {
-  //     counter := counter + 1.U
-  //     when(counter === 100.U) {
-  //       // 复制寄存器文件，然后转换到下一个状态
-  //       // newRegFile := regFile
-  //       // exit_runahead := 1.U
-  //       // state := sCopyRegs
-  //       // counter := 0.U // 重置计数器
-  //     }
-  //   }
-  //   is(sCopyRegs) {
-  //     // state := sWriteBack
-  //   }
-  //   is(sWriteBack) {
-  //     // ...
-  //   }
-  // }
-  //==========================================================method 2
 
   //==========================================================method 1
   when(io.l2miss) {
     for (i <- 0 until 31) {
       io.runahead_trig := true.B
+      rh_flag := 1.U
       rf_reg(i) := io.rf_in(i)
     }
     // for (i <- 0 until 32) {

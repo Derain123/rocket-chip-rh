@@ -841,6 +841,7 @@ printf(p"Total DCache access events: ${access_events}\n")
     }
 
     //dontTouch
+    dontTouch(l2hit)
     dontTouch(stallpc_flag)
     dontTouch(databack_flag)
     dontTouch(prevl1miss)
