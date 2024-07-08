@@ -57,7 +57,9 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
   }
   io.runahead_backflag := false.B
   io.runahead_trig := false.B
+  io.runahead_flag := false.B
   val rh_flag = RegInit(0.U(1.W))
+  io.runahead_flag := rh_flag
   dontTouch(rh_flag)
   dontTouch(io)
   dontTouch(rf_reg)
@@ -67,6 +69,7 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
     for (i <- 0 until 31) {
       io.runahead_trig := true.B
       rh_flag := 1.U
+      // io.runahead_flag := rh_flag
       rf_reg(i) := io.rf_in(i)
     }
     // for (i <- 0 until 32) {
@@ -83,6 +86,7 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
   when(io.wb_valid) {
     for (j <- 0 until 31) {
       io.runahead_backflag := true.B
+      rh_flag := 0.U
       io.rf_out(j) := rf_reg(j)
       // rf_reg(j) := 0.U(params.xLen.W)
     }

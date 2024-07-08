@@ -794,46 +794,21 @@ printf(p"Total DCache access events: ${access_events}\n")
  //=====================================RAIN_runahead mode==========================================================//
     val rcu = Module(new RCU(RCU_Params(xLen)))
 
-    val origintag = RegInit(0.U(8.W))
-    val runahead_wb_valid = Reg(Bool())
-    // when(wb_dcache_miss)                                //addr
-    // {
-    //   origintag := dmem_resp_waddr
-    // }
-    // when(dmem_resp_valid && (origintag===dmem_resp_waddr))
-    // {
-    //   runahead_wb_valid := true.B
-    // }
-
-    val insert_stallpc = "h80000F7A".U(32.W)
-    val stallpc_flag = (wb_reg_pc === insert_stallpc) && (wb_dcache_miss === 1.U)
-    // printf("stallpc_flag is %d",stallpc_flag)
-
-    // addr_range
-    val range_offset_up = 4.U(32.W) // offset
-    val range_offset = 2.U(32.W)
-    val lower_bound = insert_stallpc - range_offset
-    val upper_bound = insert_stallpc + range_offset_up
-    //miss-fallingedge-define
-    val miss_fallingedge = Wire(Bool())
-    val miss_risingedge = Wire(Bool())
+    //trig
     val l2hit = io.dmem.l2hit
-    val prevl1miss = RegNext(wb_dcache_miss, init = false.B)
-    val prevl1miss_trig = RegNext(stallpc_flag, init = false.B)
-    miss_fallingedge := prevl1miss && !wb_dcache_miss
-    miss_risingedge := !prevl1miss_trig && stallpc_flag
-    
-    val databack_flag = (wb_reg_pc >= lower_bound && wb_reg_pc <= upper_bound) && (miss_fallingedge === 1.U)
-    // rcu.io.l2miss := stallpc_flag   
-    rcu.io.l2miss := miss_risingedge                
+    val prel2miss = RegNext(l2hit,init = false.B)
+    val l2miss_falingedge = Wire(Bool())
+    l2miss_falingedge := prel2miss && !l2hit
+    //databack
+    val db_flag = rcu.io.runahead_flag && io.dmem.resp.valid
+    //init signal
+    rcu.io.l2miss := l2miss_falingedge                
     rcu.io.ipc := wb_reg_pc
-    rcu.io.wb_valid := databack_flag
+    rcu.io.wb_valid := db_flag
     //wb_reg_flush_pipe := rcu.io.stall_pipe
-    // when(rcu.io.runahead_trig){
       for (i <- 0 until 31) {
         rcu.io.rf_in(i) := rf.read(i.U)
       }
-    // }
     when(rcu.io.runahead_backflag){
       for (j <- 0 until 31) {
         rf.write(j.U, rcu.io.rf_out(j))
@@ -842,12 +817,6 @@ printf(p"Total DCache access events: ${access_events}\n")
 
     //dontTouch
     dontTouch(l2hit)
-    dontTouch(stallpc_flag)
-    dontTouch(databack_flag)
-    dontTouch(prevl1miss)
-    dontTouch(prevl1miss_trig)
-    dontTouch(miss_fallingedge)
-    dontTouch(miss_risingedge)
     // dontTouch(ctrl_stalld)
 
   //====================  RAIN_runahead-l2miss  =================================/
