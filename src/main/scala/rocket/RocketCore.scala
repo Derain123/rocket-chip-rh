@@ -182,6 +182,9 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ("DTLB miss", () => io.dmem.perf.tlbMiss),
       ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
 
+      //runahead
+      dontTouch(io.dmem.perf)
+
   val pipelinedMul = usingMulDiv && mulDivParams.mulUnroll == xLen
   val decode_table = {
     require(!usingRoCC || !rocketParams.useSCIE)
@@ -235,6 +238,18 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_scie_unpipelined = Reg(Bool())
   val ex_scie_pipelined = Reg(Bool())
   val ex_reg_wphit            = Reg(Vec(nBreakpoints, Bool()))
+   //============================================runahead-ex-wxx=============================================//
+    val ex_rh_readrf = Reg(Vec(2, Bool()))   //the register we read will be used in ex-stage
+    val ex_rh_readfp = Reg(Vec(3, Bool()))
+    val ex_rh_raddr = Reg(Vec(3,UInt()))     // the register number
+    // val ex_fp_wen = Reg(Bool())
+    // val ex_rh_store = Reg(Bool())
+    // val ex_rh_load = Reg(Bool())
+    dontTouch(ex_rh_readrf)
+    dontTouch(ex_rh_raddr)
+    dontTouch(ex_rh_readfp)
+    // dontTouch(ex_fp_wen)
+    //============================================runahead=============================================//
 
   val mem_reg_xcpt_interrupt  = Reg(Bool())
   val mem_reg_valid           = Reg(Bool())
@@ -261,6 +276,25 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val take_pc_mem = Wire(Bool())
   val mem_reg_wphit          = Reg(Vec(nBreakpoints, Bool()))
 
+  //============================================runahead-mem=============================================//
+    //val mem_rh_readrs = Reg(Vec(3, Bool()))
+    val mem_rh_raddr = Reg(Vec(3,UInt()))
+    val mem_rh_readrf = Reg(Vec(2, Bool()))   //the register we read will be used in ex-stage
+    val mem_rh_readfp = Reg(Vec(3, Bool()))
+    // val mem_fp_wen = Reg(Bool())
+    // val mem_rh_store = Reg(Bool())
+    // val mem_rh_addr = Reg(UInt())
+    dontTouch(mem_rh_readrf)
+    dontTouch(mem_rh_raddr)
+    dontTouch(mem_rh_readfp)
+    val wb_rh_readrf = Reg(Vec(2, Bool()))
+    val wb_rh_readfp = Reg(Vec(3, Bool()))
+    val wb_rh_raddr = Reg(Vec(3,UInt()))
+    // val wb_reg_load  = Reg(Bool())
+    // val wb_reg_store = Reg(Bool())
+    // val wb_rh_store = Reg(Bool())
+ //============================================runahead=============================================//
+
   val wb_reg_valid           = Reg(Bool())
   val wb_reg_xcpt            = Reg(Bool())
   val wb_reg_replay          = Reg(Bool())
@@ -278,9 +312,21 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val wb_reg_rs2 = Reg(Bits())
   val take_pc_wb = Wire(Bool())
   val wb_reg_wphit           = Reg(Vec(nBreakpoints, Bool()))
+  //runahead
+  val rcu = Module(new RCU(RCU_Params(xLen)))
+  val wb_reg_store = Reg(Bool())
+  val wb_reg_load = Reg(Bool())
+  val l2miss_falingedge = Wire(Bool())
+  val db_flag = Wire(Bool())
+  val runahead_flag = Wire(Bool())
+
+  runahead_flag := rcu.io.runahead_flag
 
   val take_pc_mem_wb = take_pc_wb || take_pc_mem
-  val take_pc = take_pc_mem_wb
+  val take_pc = take_pc_mem_wb //|| l2miss_falingedge || db_flag
+  dontTouch(take_pc)
+  dontTouch(runahead_flag)
+
 
   // decode stage
   val ibuf = Module(new IBuf)
@@ -560,6 +606,20 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     ex_reg_pc := ibuf.io.pc
     ex_reg_btb_resp := ibuf.io.btb_resp
     ex_reg_wphit := bpu.io.bpwatch.map { bpw => bpw.ivalid(0) }
+    //====================================wxx-runahead=============================//    
+    ex_rh_readrf(0) := id_ren(0) && id_raddr1 =/= 0.U
+    ex_rh_readrf(1) := id_ren(1) && id_raddr2 =/= 0.U
+    ex_rh_readfp(0) := io.fpu.dec.ren1
+    ex_rh_readfp(1) := io.fpu.dec.ren2
+    ex_rh_readfp(2) := io.fpu.dec.ren3
+    ex_rh_raddr(0) := id_raddr1
+    ex_rh_raddr(1) := id_raddr2
+    ex_rh_raddr(2) := id_raddr3
+    // ex_fp_wen := io.fpu.dec.wen && io.fpu.valid
+    //使rh期间不能写内存（也就是store）
+    // ex_rh_store := id_ctrl.mem && isWrite(id_ctrl.mem_cmd) && l2miss_falingedge
+    // ex_rh_load := id_ctrl.mem && isRead(id_ctrl.mem_cmd)
+//====================================wxx-runahead=============================// 
   }
 
   // replay inst in ex stage?
@@ -569,7 +629,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                              ex_ctrl.div && !div.io.req.ready
   val replay_ex_load_use = wb_dcache_miss && ex_reg_load_use
   val replay_ex = ex_reg_replay || (ex_reg_valid && (replay_ex_structural || replay_ex_load_use))
-  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid
+  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid //|| rcu.io.runahead_flag//|| l2miss_falingedge || db_flag
   // detect 2-cycle load-use delay for LB/LH/SC
   val ex_slow_bypass = ex_ctrl.mem_cmd === M_XSC || ex_reg_mem_size < 2.U
   val ex_sfence = usingVM.B && ex_ctrl.mem && (ex_ctrl.mem_cmd === M_SFENCE || ex_ctrl.mem_cmd === M_HFENCEV || ex_ctrl.mem_cmd === M_HFENCEG)
@@ -593,14 +653,14 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     }.elsewhen(miss_detected) {
         // miss信号从高变低
         when(counter > 2.U) {
-            printf(p"DCache miss lasted for ${counter} cycles\n")
+            // printf(p"DCache miss lasted for ${counter} cycles\n")
             miss_events := miss_events + 40.U // 当miss的周期大于3时才增加miss事件计数
         }
         counter := 0.U
         miss_detected := false.B
     }
 }
-printf(p"Total DCache miss events: ${miss_events}\n")
+// printf(p"Total DCache miss events: ${miss_events}\n")
 
 
   //dcache access count
@@ -619,11 +679,11 @@ printf(p"Total DCache miss events: ${miss_events}\n")
         }
     }.elsewhen(access_detected) {
         // access信号从高变低，然后重置flag
-        printf(p"DCache access detect!\n")
+        // printf(p"DCache access detect!\n")
         access_detected := false.B
     }
 }
-printf(p"Total DCache access events: ${access_events}\n")
+// printf(p"Total DCache access events: ${access_events}\n")
 
 
   val (ex_xcpt, ex_cause) = checkExceptions(List(
@@ -678,6 +738,22 @@ printf(p"Total DCache access events: ${access_events}\n")
     mem_reg_mem_size := ex_reg_mem_size
     mem_reg_hls_or_dv := io.dmem.req.bits.dv
     mem_reg_pc := ex_reg_pc
+
+  //============================================runahead=============================================//
+  for(i <- 0 until 3)
+  {
+    mem_rh_raddr(i) := ex_rh_raddr(i)
+    mem_rh_readfp(i) := ex_rh_readfp(i)
+  }
+  for(i <- 0 until 2)
+  {
+    mem_rh_readrf(i) := ex_rh_readrf(i)
+  }
+  // mem_fp_wen := ex_fp_wen
+  // mem_rh_store := ex_rh_store
+  // mem_rh_addr := io.dmem.req.bits.addr
+  //============================================runahead=============================================//
+
     // IDecode ensured they are 1H
     mem_reg_wdata := Mux1H(Seq(
       ex_scie_unpipelined -> ex_scie_unpipelined_wdata,
@@ -721,9 +797,9 @@ printf(p"Total DCache access events: ${access_events}\n")
   val dcache_kill_mem = mem_reg_valid && mem_ctrl.wxd && io.dmem.replay_next // structural hazard on writeback port
   val fpu_kill_mem = mem_reg_valid && mem_ctrl.fp && io.fpu.nack_mem
   val replay_mem  = dcache_kill_mem || mem_reg_replay || fpu_kill_mem
-  val killm_common = dcache_kill_mem || take_pc_wb || mem_reg_xcpt || !mem_reg_valid
-  div.io.kill := killm_common && RegNext(div.io.req.fire)
-  val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem
+  val killm_common = dcache_kill_mem || take_pc_wb || mem_reg_xcpt || !mem_reg_valid 
+  div.io.kill := killm_common && RegNext(div.io.req.fire) 
+  val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem 
 
   // writeback stage
   wb_reg_valid := !ctrl_killm
@@ -738,6 +814,11 @@ printf(p"Total DCache access events: ${access_events}\n")
     when (mem_ctrl.rocc || mem_reg_sfence) {
       wb_reg_rs2 := mem_reg_rs2
     }
+    //runahead
+    wb_reg_store := mem_reg_store
+    wb_reg_load := mem_reg_load
+
+    //
     wb_reg_cause := mem_cause
     wb_reg_inst := mem_reg_inst
     wb_reg_raw_inst := mem_reg_raw_inst
@@ -747,9 +828,22 @@ printf(p"Total DCache access events: ${access_events}\n")
     wb_reg_hfence_g := mem_ctrl.mem_cmd === M_HFENCEG
     wb_reg_pc := mem_reg_pc
     wb_reg_wphit := mem_reg_wphit | bpu.io.bpwatch.map { bpw => (bpw.rvalid(0) && mem_reg_load) || (bpw.wvalid(0) && mem_reg_store) }
-
+    //==================================wxx-runahead================================//
+    for(i <- 0 until 3)
+    {
+     wb_rh_readfp(i) := mem_rh_readfp(i)
+     wb_rh_raddr(i) := mem_rh_raddr(i)
+    }
+    for(i <- 0 until 2)
+    {
+     wb_rh_readrf(i) := mem_rh_readrf(i)
+    }
+    // wb_reg_load := mem_reg_load
+    // wb_reg_store := mem_reg_store
+    // wb_rh_store := mem_rh_store
   }
-
+    // wb_mem_rh_addr := mem_rh_addr
+  //==================================wxx-runahead================================//
   val (wb_xcpt, wb_cause) = checkExceptions(List(
     (wb_reg_xcpt,  wb_reg_cause),
     (wb_reg_valid && wb_ctrl.mem && io.dmem.s2_xcpt.pf.st, Causes.store_page_fault.U),
@@ -792,15 +886,16 @@ printf(p"Total DCache access events: ${access_events}\n")
   val dmem_resp_replay = dmem_resp_valid && io.dmem.resp.bits.replay
 
  //=====================================RAIN_runahead mode==========================================================//
-    val rcu = Module(new RCU(RCU_Params(xLen)))
+    // val rcu = Module(new RCU(RCU_Params(xLen)))
 
     //trig
+    val acquire_r1 = RegNext(io.dmem.perf.acquire,init = false.B)
+    val acquire_r2 = RegNext(acquire_r1,init = false.B)
     val l2hit = io.dmem.l2hit
     val prel2miss = RegNext(l2hit,init = false.B)
-    val l2miss_falingedge = Wire(Bool())
-    l2miss_falingedge := prel2miss && !l2hit
+    l2miss_falingedge := prel2miss && !l2hit && acquire_r2 //10024->1006c,一开始会有很多置高该信号的异常
     //databack
-    val db_flag = rcu.io.runahead_flag && io.dmem.resp.valid
+    db_flag := rcu.io.runahead_flag && io.dmem.resp.valid
     //init signal
     rcu.io.l2miss := l2miss_falingedge                
     rcu.io.ipc := wb_reg_pc
@@ -972,7 +1067,7 @@ printf(p"Total DCache access events: ${access_events}\n")
 
   // val fp_miss_flag = Wire(Bool())
   // fp_miss_flag := wb_dcache_miss && wb_ctrl.wfd && wb_valid
-  printf("independent load run flag: %d\n",wb_dcache_miss && wb_ctrl.wfd && wb_valid)
+  // printf("independent load run flag: %d\n",wb_dcache_miss && wb_ctrl.wfd && wb_valid)
 
   val dcache_blocked = {
     // speculate that a blocked D$ will unblock the cycle after a Grant
@@ -995,15 +1090,19 @@ printf(p"Total DCache access events: ${access_events}\n")
     id_do_fence ||
     csr.io.csr_stall ||
     id_reg_pause ||
-    io.traceStall
-  ctrl_killd := !ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt
+    io.traceStall //||
+    // db_flag
+  ctrl_killd := (!ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt) //|| l2miss_falingedge || db_flag
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
   io.imem.req.bits.pc :=
     Mux(wb_xcpt || csr.io.eret, csr.io.evec, // exception or [m|s]ret
     Mux(replay_wb,              wb_reg_pc,   // replay
-                                mem_npc))    // flush or branch misprediction
+    // Mux(l2miss_falingedge && wb_reg_store, mem_reg_pc,           //enter runahead  for storemiss loadmiss also? but loadmiss with data-dependency?
+    // Mux(l2miss_falingedge && wb_reg_load, ex_reg_pc,
+    Mux(db_flag && rcu.io.runahead_flag, rcu.io.opc,           //exit runahead
+                                mem_npc)))//))    // flush or branch misprediction
   io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack
   io.imem.might_request := {
     imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate

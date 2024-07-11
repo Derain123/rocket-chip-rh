@@ -33,6 +33,8 @@ class RCU_IO (params: RCU_Params) extends Bundle {
   val runahead_backflag = Output(Bool())
   val runahead_trig = Output(Bool())
   val runahead_flag = Output(Bool())
+  val opc = Output(UInt(40.W))
+
   // val fp_out = Output(Vec(32,UInt(params.xLen.W+1)))    //floating point register file
   // val stall_pipe = Output(Bool())
   // val opc = Output(UInt(40.W))
@@ -50,7 +52,7 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
   //val rf_reg = RegInit(0.U(params.xLen.W))
   val rf_reg = RegInit(VecInit(Seq.fill(31)(0.U(params.xLen.W))))
   // val fp_reg = RegInit(VecInit(Seq.fill(32)(0.U(params.xLen.W+1))))      //floating point register file
-  //val storepc = RegInit(0.U(40.W))
+  val storepc = RegInit(0.U(40.W))
   //initialize
   for (i <- 0 until 31) {
     io.rf_out(i) := 0.U(params.xLen.W)
@@ -75,9 +77,10 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
     // for (i <- 0 until 32) {
     //   fp_reg(i) := io.fp_in(i)
     // }
-    //storepc := io.ipc
+    storepc := io.ipc
     //io.stall_pipe := true.B
   }
+  io.opc := storepc
 //  } otherwise{
 //    io.stall_pipe<>DontCare
 //    io.opc <> DontCare
@@ -95,7 +98,6 @@ class RCU (val params: RCU_Params) extends Module with Has_RCU_IO {
     //   //fp_reg(j) := 0.U(params.xLen.W+1)
     // }
     //io.stall_pipe := false.B
-    //io.opc := storepc
     //storepc:= 0.U
   } 
   // otherwise {
