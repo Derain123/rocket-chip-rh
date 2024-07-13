@@ -806,6 +806,34 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   val wdata_encoded = (0 until rowWords).map(i => dECC.encode(writeArb.io.out.bits.data(coreDataBits*(i+1)-1,coreDataBits*i)))
   data.io.write.bits.data := wdata_encoded.asUInt
 
+  //===== rrunahead: Start ====//
+  // val tl_out_b = Wire(chiselTypeOf(tl_out.b))
+  //   tl_out.b <> {
+  //   val b_queue_depth = outer.crossing match {
+  //     case RationalCrossing(_) => // TODO make this depend on the actual ratio?
+  //       if (cacheParams.separateUncachedResp) (maxUncachedInFlight + 1) / 2
+  //       else 2 min maxUncachedInFlight-1
+  //     case SynchronousCrossing(BufferParams.none) => 1 // Need some buffering to guarantee livelock freedom
+  //     case SynchronousCrossing(_)  => 0 // Adequate buffering within the crossing
+  //     case _: AsynchronousCrossing => 0 // Adequate buffering within the crossing
+  //     case _: CreditedCrossing     => 0 // Adequate buffering within the crossing
+  //   }
+  //   Queue(tl_out_b, b_queue_depth, flow = true)
+  // }
+  // val l2_hit = tl_out_b.bits.hit
+  val l2_hit = Wire(chiselTypeOf(tl_out.b.bits.hit))
+  l2_hit := tl_out.b.bits.hit
+  io.cpu.l2hit := tl_out.b.bits.hit
+  dontTouch(io.cpu.l2hit)
+  dontTouch(l2_hit)
+  val tl_d_data_encoded1 = Wire(chiselTypeOf(tl_out.d.bits.data))
+  tl_d_data_encoded1 := tl_out.d.bits.data
+  dontTouch(tl_d_data_encoded1)
+  val l2_hit2 = Wire(chiselTypeOf(tl_out.d.bits.hit))
+  l2_hit2 := tl_out.d.bits.hit
+  dontTouch(l2_hit2)
+  //===== rrunahead: Start ====//
+
   // tag read for new requests
   metaReadArb.io.in(4).valid := io.cpu.req.valid
   metaReadArb.io.in(4).bits.idx := io.cpu.req.bits.addr >> blockOffBits
@@ -1050,3 +1078,5 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   // no clock-gating support
   io.cpu.clock_enabled := true.B
 }
+
+
