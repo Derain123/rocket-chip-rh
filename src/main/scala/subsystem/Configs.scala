@@ -102,7 +102,7 @@ class WithNBigCores(
         divEarlyOut = true))),
       dcache = Some(DCacheParams(
         rowBits = site(SystemBusKey).beatBits,
-        nMSHRs = 16,               //wxx-runahead used to be 0
+        nMSHRs = 0,               //wxx-runahead used to be 0
                                    //wxx-cache-have not write
         blockBytes = site(CacheBlockBytes))),
       icache = Some(ICacheParams(
