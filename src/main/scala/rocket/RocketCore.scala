@@ -323,7 +323,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   runahead_flag := rcu.io.runahead_flag
 
   val take_pc_mem_wb = take_pc_wb || take_pc_mem
-  val take_pc = take_pc_mem_wb //|| l2miss_falingedge || db_flag
+  val take_pc = take_pc_mem_wb || l2miss_falingedge || db_flag
   dontTouch(take_pc)
   dontTouch(runahead_flag)
 
@@ -629,7 +629,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
                              ex_ctrl.div && !div.io.req.ready
   val replay_ex_load_use = wb_dcache_miss && ex_reg_load_use
   val replay_ex = ex_reg_replay || (ex_reg_valid && (replay_ex_structural || replay_ex_load_use))
-  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid //|| rcu.io.runahead_flag//|| l2miss_falingedge || db_flag
+  val ctrl_killx = take_pc_mem_wb || replay_ex || !ex_reg_valid || db_flag || l2miss_falingedge
   // detect 2-cycle load-use delay for LB/LH/SC
   val ex_slow_bypass = ex_ctrl.mem_cmd === M_XSC || ex_reg_mem_size < 2.U
   val ex_sfence = usingVM.B && ex_ctrl.mem && (ex_ctrl.mem_cmd === M_SFENCE || ex_ctrl.mem_cmd === M_HFENCEV || ex_ctrl.mem_cmd === M_HFENCEG)
@@ -799,7 +799,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val replay_mem  = dcache_kill_mem || mem_reg_replay || fpu_kill_mem
   val killm_common = dcache_kill_mem || take_pc_wb || mem_reg_xcpt || !mem_reg_valid 
   div.io.kill := killm_common && RegNext(div.io.req.fire) 
-  val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem 
+  val ctrl_killm = killm_common || mem_xcpt || fpu_kill_mem || l2miss_falingedge || db_flag
 
   // writeback stage
   wb_reg_valid := !ctrl_killm
@@ -1035,6 +1035,18 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val id_sboard_hazard = checkHazards(hazard_targets, rd => sboard.read(rd) && !id_sboard_clear_bypass(rd))
   sboard.set(wb_set_sboard && wb_wen, wb_waddr)
 
+    //runahead
+    for (i <- 0 until 31) {
+        rcu.io.sb_in(i) := sboard.read(i.U).asUInt()
+      }
+    when(rcu.io.runahead_backflag){
+      for (j <- 0 until 31) {
+        sboard.clear(true.B,j.U)
+        sboard.set(rcu.io.rf_out(j) =/= 1.U,j.U)
+      }
+    }
+    //
+
   // stall for RAW/WAW hazards on CSRs, loads, AMOs, and mul/div in execute stage.
   val ex_cannot_bypass = ex_ctrl.csr =/= CSR.N || ex_ctrl.jalr || ex_ctrl.mem || ex_ctrl.mul || ex_ctrl.div || ex_ctrl.fp || ex_ctrl.rocc || ex_scie_pipelined
   val data_hazard_ex = ex_ctrl.wxd && checkHazards(hazard_targets, _ === ex_waddr)
@@ -1084,25 +1096,26 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     id_csr_en && csr.io.decode(0).fp_csr && !io.fpu.fcsr_rdy ||
     id_ctrl.fp && id_stall_fpu ||
     id_ctrl.mem && dcache_blocked || // reduce activity during D$ misses
+    // ((id_ctrl.mem && dcache_blocked) && !runahead_flag) || // reduce activity during D$ misses
     id_ctrl.rocc && rocc_blocked || // reduce activity while RoCC is busy
     id_ctrl.div && (!(div.io.req.ready || (div.io.resp.valid && !wb_wxd)) || div.io.req.valid) || // reduce odds of replay
     !clock_en ||
     id_do_fence ||
     csr.io.csr_stall ||
     id_reg_pause ||
-    io.traceStall //||
-    // db_flag
-  ctrl_killd := (!ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt) //|| l2miss_falingedge || db_flag
+    io.traceStall ||
+     db_flag
+  ctrl_killd := db_flag || l2miss_falingedge || (!ibuf.io.inst(0).valid || ibuf.io.inst(0).bits.replay || take_pc_mem_wb || ctrl_stalld || csr.io.interrupt) 
 
   io.imem.req.valid := take_pc
   io.imem.req.bits.speculative := !take_pc_wb
   io.imem.req.bits.pc :=
     Mux(wb_xcpt || csr.io.eret, csr.io.evec, // exception or [m|s]ret
-    Mux(replay_wb,              wb_reg_pc,   // replay
-    // Mux(l2miss_falingedge && wb_reg_store, mem_reg_pc,           //enter runahead  for storemiss loadmiss also? but loadmiss with data-dependency?
+    Mux(l2miss_falingedge , mem_reg_pc,           //enter runahead  for storemiss loadmiss also? but loadmiss with data-dependency?
     // Mux(l2miss_falingedge && wb_reg_load, ex_reg_pc,
     Mux(db_flag && rcu.io.runahead_flag, rcu.io.opc,           //exit runahead
-                                mem_npc)))//))    // flush or branch misprediction
+    Mux(replay_wb,              wb_reg_pc,   // replay
+                                mem_npc))))//))    // flush or branch misprediction
   io.imem.flush_icache := wb_reg_valid && wb_ctrl.fence_i && !io.dmem.s2_nack
   io.imem.might_request := {
     imem_might_request_reg := ex_pc_valid || mem_pc_valid || io.ptw.customCSRs.disableICacheClockGate
