@@ -11,6 +11,12 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.rocket._
 import freechips.rocketchip.tile._
 import freechips.rocketchip.util._
+/*runahead code begin*/
+// import sifive.blocks.devices.gpio._
+// import sifive.blocks.devices.uart._
+// import sifive.blocks.devices.spi._
+// import sifive.blocks.inclusivecache._
+/*runahead code end*/
 
 class BaseSubsystemConfig extends Config ((site, here, up) => {
   // Tile parameters
@@ -38,6 +44,9 @@ class BaseSubsystemConfig extends Config ((site, here, up) => {
     blockBytes = site(CacheBlockBytes))
   // Additional device Parameters
   case BootROMLocated(InSubsystem) => Some(BootROMParams(contentFileName = "./bootrom/bootrom.img"))
+  /*runahead code begin*/
+  // case L2hitLocated(InSubsystem) => Some(L2hitParams(0,0))
+  /*runahead code end*/
   case SubsystemExternalResetVectorKey => false
   case DebugModuleKey => Some(DefaultDebugModuleParams(site(XLen)))
   case CLINTKey => Some(CLINTParams())
@@ -102,8 +111,7 @@ class WithNBigCores(
         divEarlyOut = true))),
       dcache = Some(DCacheParams(
         rowBits = site(SystemBusKey).beatBits,
-        nMSHRs = 0,               //wxx-runahead used to be 0
-                                   //wxx-cache-have not write
+        nMSHRs = 2,
         blockBytes = site(CacheBlockBytes))),
       icache = Some(ICacheParams(
         rowBits = site(SystemBusKey).beatBits,

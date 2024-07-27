@@ -635,7 +635,9 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    /*runahead code begin*/
     d.hit     := true.B
+    /*runahead code begin*/
     d
   }
 
@@ -664,7 +666,9 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    /*runahead code begin*/
     d.hit := true.B
+    /*runahead code end*/
     d
   }
 
@@ -778,6 +782,7 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := 0.U
     d.corrupt := false.B
+    /*runahead code begin*/
     d.hit     := true.B
     d
   }
@@ -795,7 +800,9 @@ class TLEdgeIn(
     d.denied  := denied
     d.data    := data
     d.corrupt := corrupt
+    /*runahead code begin*/
     d.hit     := true.B
+    /*runahead code end*/
     d
   }
 

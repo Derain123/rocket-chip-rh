@@ -185,7 +185,7 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   dcacheArb.io.requestor <> dcachePorts.toSeq
   ptw.io.requestor <> ptwPorts.toSeq
 
-  //===== RAIN_runahead: Start ====//
+  /*runahead code begin*/
   // val rrunahead = Module(new zzguardrr)
   // rrunahead.io.valid      := core.io.valid
   // rrunahead.io.din_pc     := core.io.pc
@@ -197,7 +197,7 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
   // core.io.hit := outer.ins_tile_hit.get.bundle
   outer.ins_tile_hit.get.bundle := core.io.hit
   
-  //===== RAIN_runahead: End   ====//
+  /*runahead code end*/
 
 }
 

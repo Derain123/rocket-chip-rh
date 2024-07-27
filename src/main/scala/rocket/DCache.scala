@@ -156,7 +156,7 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
       (tl_out.c, true.B)
     }
 
-  //===== rrunahead: Start ====//
+  /*runahead code begin*/
   // val tl_out_b = Wire(chiselTypeOf(tl_out.b))
   //   tl_out.b <> {
   //   val b_queue_depth = outer.crossing match {
@@ -182,7 +182,7 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
   val l2_hit2 = Wire(chiselTypeOf(tl_out.d.bits.hit))
   l2_hit2 := tl_out.d.bits.hit
   dontTouch(l2_hit2)
-  //===== rrunahead: Start ====//
+  /*runahead code end*/
 
   val s1_valid = RegNext(io.cpu.req.fire(), false.B)
   val s1_probe = RegNext(tl_out.b.fire(), false.B)

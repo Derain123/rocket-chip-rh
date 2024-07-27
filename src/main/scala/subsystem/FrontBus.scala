@@ -32,5 +32,3 @@ class FrontBus(params: FrontBusParams, name: String = "front_bus")(implicit p: P
   val builtInDevices: BuiltInDevices = BuiltInDevices.attach(params, outwardNode)
   val prefixNode = None
 }
-
-

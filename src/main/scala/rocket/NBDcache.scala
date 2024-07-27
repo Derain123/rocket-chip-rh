@@ -162,11 +162,19 @@ class MSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCach
     val replay = Decoupled(new ReplayInternal)
     val wb_req = Decoupled(new WritebackReq(edge.bundle))
     val probe_rdy = Output(Bool())
+    /*runahead code begin*/
+    val state = Output(UInt(3.W))
+    val enq_ptr_value = Output(UInt(4.W))
+    val deq_ptr_value = Output(UInt(4.W))
+    /*runahead code end*/
   })
 
   val s_invalid :: s_wb_req :: s_wb_resp :: s_meta_clear :: s_refill_req :: s_refill_resp :: s_meta_write_req :: s_meta_write_resp :: s_drain_rpq :: Nil = Enum(9)
   val state = RegInit(s_invalid)
 
+  /*runahead code begin*/
+  io.state := state
+  /*runahead code end*/
   val req = Reg(new MSHRReqInternal)
   val req_idx = req.addr(untagBits-1,blockOffBits)
   val req_tag = req.addr >> untagBits
@@ -191,10 +199,16 @@ class MSHR(id: Int)(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCach
                     (state.isOneOf(s_refill_req, s_refill_resp) &&
                       !cmd_requires_second_acquire && !refill_done))
 
-  val rpq = Module(new Queue(new ReplayInternal, cfg.nRPQ))
+  val rpq = Module(new NBDcacheQueue(new ReplayInternal, cfg.nRPQ))
   rpq.io.enq.valid := (io.req_pri_val && io.req_pri_rdy || io.req_sec_val && sec_rdy) && !isPrefetch(io.req_bits.cmd)
   rpq.io.enq.bits := io.req_bits
   rpq.io.deq.ready := (io.replay.ready && state === s_drain_rpq) || state === s_invalid
+  /*runahead code begin*/
+  io.enq_ptr_value := rpq.io.enq_ptr_value
+  io.deq_ptr_value := rpq.io.deq_ptr_value
+  //dontTouch(io.enq_ptr_value)
+  //dontTouch(io.deq_ptr_value)
+  /*runahead code end*/
 
   val acked = Reg(Bool())
   when (io.mem_grant.valid) { acked := true.B }
@@ -331,6 +345,12 @@ class MSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCacheModu
     val probe_rdy = Output(Bool())
     val fence_rdy = Output(Bool())
     val replay_next = Output(Bool())
+    /*runahead code begin*/
+    val mshr_l2miss_tag = Output(UInt(7.W))
+    val mshr_state = Output(Vec(2, Bits(3.W)))
+    val mshr_flag = Output(Bool())
+
+    /*runahead code end*/
   })
 
   // determine if the request is cacheable or not
@@ -355,6 +375,12 @@ class MSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCacheModu
   val replay_arb = Module(new Arbiter(new ReplayInternal, cfg.nMSHRs))
   val alloc_arb = Module(new Arbiter(Bool(), cfg.nMSHRs))
   alloc_arb.io.in.foreach(_.bits := DontCare)
+  /*runahead code begin*/
+  val state = Wire(Vec(cfg.nMSHRs, Bits(3.W)))
+  val mshr_tag = Wire(Vec(cfg.nMSHRs, Bits(7.W)))
+  val enq_ptr_value = Wire(Vec(cfg.nMSHRs, Bits(4.W)))
+  val deq_ptr_value = Wire(Vec(cfg.nMSHRs, Bits(4.W)))
+  /*runahead code begin*/
 
   var idx_match = false.B
   var pri_rdy = false.B
@@ -396,9 +422,24 @@ class MSHRFile(implicit edge: TLEdgeOut, p: Parameters) extends L1HellaCacheModu
     when (!mshr.io.req_pri_rdy) { io.fence_rdy := false.B }
     when (!mshr.io.probe_rdy) { io.probe_rdy := false.B }
 
+    /*runahead code begin*/
+    state(i) := mshr.io.state
+    mshr_tag(i) := mshr.io.replay.bits.tag
+    enq_ptr_value(i) := mshr.io.enq_ptr_value
+    deq_ptr_value(i) := mshr.io.deq_ptr_value
+    /*runahead code end*/
+
     mshr
   }
 
+  /*runahead code begin*/
+  io.mshr_state := state
+  val ptr_value = Mux((enq_ptr_value(0) - deq_ptr_value(0)) < 0.U, ~(enq_ptr_value(0) - deq_ptr_value(0)) + 1.U ,(enq_ptr_value(0) - deq_ptr_value(0)))
+  dontTouch(ptr_value)
+  //这里只考虑了一个load的情况 need to change 
+  io.mshr_flag :=  (ptr_value === 1.U || ptr_value === 15.U) && state(0) === 5.U && state(1) === 0.U
+  io.mshr_l2miss_tag := Mux(state(0)===5.U && state(1) ===0.U, mshr_tag(0), 0.U)
+  /*runahead code end*/
 
   alloc_arb.io.out.ready := io.req.valid && sdq_rdy && cacheable && !idx_match
 
@@ -805,8 +846,7 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   data.io.write.bits := writeArb.io.out.bits
   val wdata_encoded = (0 until rowWords).map(i => dECC.encode(writeArb.io.out.bits.data(coreDataBits*(i+1)-1,coreDataBits*i)))
   data.io.write.bits.data := wdata_encoded.asUInt
-
-  //===== rrunahead: Start ====//
+  /*runahead code begin*/
   // val tl_out_b = Wire(chiselTypeOf(tl_out.b))
   //   tl_out.b <> {
   //   val b_queue_depth = outer.crossing match {
@@ -821,6 +861,8 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   //   Queue(tl_out_b, b_queue_depth, flow = true)
   // }
   // val l2_hit = tl_out_b.bits.hit
+
+
   val l2_hit = Wire(chiselTypeOf(tl_out.b.bits.hit))
   l2_hit := tl_out.b.bits.hit
   io.cpu.l2hit := tl_out.b.bits.hit
@@ -832,7 +874,14 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   val l2_hit2 = Wire(chiselTypeOf(tl_out.d.bits.hit))
   l2_hit2 := tl_out.d.bits.hit
   dontTouch(l2_hit2)
-  //===== rrunahead: Start ====//
+
+  io.cpu.mshr_l2miss_tag := mshrs.io.mshr_l2miss_tag
+  io.cpu.mshr_state := mshrs.io.mshr_state
+
+  io.cpu.mshr_flag := mshrs.io.mshr_flag
+
+
+  /*runahead code end*/
 
   // tag read for new requests
   metaReadArb.io.in(4).valid := io.cpu.req.valid
@@ -1078,5 +1127,3 @@ class NonBlockingDCacheModule(outer: NonBlockingDCache) extends HellaCacheModule
   // no clock-gating support
   io.cpu.clock_enabled := true.B
 }
-
-

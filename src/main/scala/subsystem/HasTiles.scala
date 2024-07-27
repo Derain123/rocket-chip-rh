@@ -269,14 +269,14 @@ trait CanAttachTile {
     connectPRC(domain, context)
     connectOutputNotifications(domain, context)
     connectInputConstants(domain, context)
-    //===== rrunahead: Start ====//
+    /*runahead code begin*/
     connectionsl2(domain,context)
     connectionsl2hit(domain,context)
-    //===== rrunahead: End   ====//
+    /*runahead code end*/
 
   }
 
-  //===== rrunahead: Start ====//
+  /*runahead code begin*/
   def connectionsl2(domain: TilePRCIDomain[TileType], context: TileContextType): Unit = {
     implicit val p = context.p
     context.ins_outtile := domain.tile.ins_tile.get
@@ -289,7 +289,7 @@ trait CanAttachTile {
     // domain.tile.ins_tile_hit.get := context.ins_outtile_hit
     // dontTouch(context.ins_outtile_hit)
   }
-  //===== rrunahead: End   ====//
+  /*runahead code end*/
 
   /** Connect the port where the tile is the master to a TileLink interconnect. */
   def connectMasterPorts(domain: TilePRCIDomain[TileType], context: Attachable): Unit = {

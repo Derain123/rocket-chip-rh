@@ -49,7 +49,7 @@ class SystemBus(params: SystemBusParams, name: String = "system_bus")(implicit p
   val outwardNode: TLOutwardNode = system_bus_xbar.node
   def busView: TLEdge = system_bus_xbar.node.edges.in.head
 
-  //===== rrunahead: Start ====//
+  /*runahead code begin*/
   // def attach(subsystem: BaseSubsystem with HasTiles with BankedL2Params)
   // (implicit p: Parameters){
   //   val l2_hit_sbus = BundleBridgeSink[UInt](Some(() => Bool()))
@@ -57,7 +57,7 @@ class SystemBus(params: SystemBusParams, name: String = "system_bus")(implicit p
   // }
 
 
-  //===== rrunahead: End ====//
+  /*runahead code end*/
 
 
   val builtInDevices: BuiltInDevices = BuiltInDevices.attach(params, outwardNode)

@@ -201,7 +201,9 @@ final class TLBundleB(params: TLBundleParameters)
   val mask    = UInt((params.dataBits/8).W)
   val data    = UInt(params.dataBits.W)
   val corrupt = Bool() // only applies to *Data messages
-  val hit     = Bool() 
+  /*runahead code begin*/
+  val hit     = Bool()
+  /*runahead code end*/ 
 }
 
 final class TLBundleC(params: TLBundleParameters)
@@ -237,9 +239,9 @@ final class TLBundleD(params: TLBundleParameters)
   // variable fields during multibeat:
   val data    = UInt(params.dataBits.W)
   val corrupt = Bool() // only applies to *Data messages
-  //rrunahead_start
+  /*runahead code begin*/
   val hit     = Bool() 
-  //rrunahead_end
+  /*runahead code end*/
 }
 
 final class TLBundleE(params: TLBundleParameters)

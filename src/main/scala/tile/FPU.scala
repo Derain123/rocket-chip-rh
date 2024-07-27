@@ -14,7 +14,6 @@ import freechips.rocketchip.rocket.Instructions._
 import freechips.rocketchip.util._
 import freechips.rocketchip.util.property
 
-
 case class FPUParams(
   minFLen: Int = 32,
   fLen: Int = 64,
@@ -206,23 +205,14 @@ class FPUCoreIO(implicit p: Parameters) extends CoreBundle()(p) {
   val sboard_clra = Output(UInt(5.W))
 
   val keep_clock_enabled = Input(Bool())
-  //=========================  runahead  =================================//
+
+  /*runahead code begin*/
   def rcu_params = RCU_Params(64)
-  //val rcu = Flipped(new RCU_IO(rcu_params))
-  //val ptw = Flipped(new DatapathPTWIO())
-  val l2miss = Input(Bool())
-  val wb_valid = Input(Bool())
+  val rcu = Flipped(new RCU_IO(rcu_params))
   val fp_in = Input(Vec(32,UInt(65.W)))
   val fp_out = Output(Vec(32,UInt(65.W)))
-  val fp_wdata = Output(UInt(65.W))
-  val fp_longinst_wbflag = Input(Bool())   //表明rh之后有一个fp长指令的结果可以提前写回
-  val fp_longinst_wdata = Input(UInt(65.W))
-  val fp_longinst_waddr = Input(UInt(5.W))
-  val fp_ctrl_divsqrt = Output(Bool())
-  val ex_rh_fp_kill = Input(Bool())       //wether the sboardset address has value to come back
-  val fp_fma = Output(Bool())
-  // val fp_waddr = Input(UInt(5.W))
-  //=========================  runahead  =================================//
+  /*runahead code end*/
+
 }
 
 class FPUIO(implicit p: Parameters) extends FPUCoreIO ()(p) {
@@ -758,13 +748,13 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   fp_decoder.io.inst := io.inst
   val id_ctrl = fp_decoder.io.sigs
 
-  val ex_reg_valid = !io.ex_rh_fp_kill && RegNext(io.valid, false.B)            //wxx-rh 使rh之后的长指令ex开始无效
+  val ex_reg_valid = RegNext(io.valid, false.B)
   val ex_reg_inst = RegEnable(io.inst, io.valid)
   val ex_reg_ctrl = RegEnable(id_ctrl, io.valid)
   val ex_ra = List.fill(3)(Reg(UInt()))
 
   // load response
-  val load_wb = RegNext(io.dmem_resp_val) 
+  val load_wb = RegNext(io.dmem_resp_val)
   val load_wb_typeTag = RegEnable(io.dmem_resp_type(1,0) - typeTagWbOffset, io.dmem_resp_val)
   val load_wb_data = RegEnable(io.dmem_resp_data, io.dmem_resp_val)
   val load_wb_tag = RegEnable(io.dmem_resp_tag, io.dmem_resp_val)
@@ -776,11 +766,11 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   val mem_cp_valid = RegNext(ex_cp_valid, false.B)
   val wb_cp_valid = RegNext(mem_cp_valid, false.B)
   val mem_reg_valid = RegInit(false.B)
-  val killm = (io.killm || io.nack_mem) && !mem_cp_valid || io.wb_valid //|| io.fpu.fp_ctrl_divSqrt_killed  //wxx-runahead   || io.wb_valid
+  val killm = (io.killm || io.nack_mem) && !mem_cp_valid
   // Kill X-stage instruction if M-stage is killed.  This prevents it from
   // speculatively being sent to the div-sqrt unit, which can cause priority
   // inversion for two back-to-back divides, the first of which is killed.
-  val killx = io.killx || mem_reg_valid && killm || io.wb_valid //|| io.fpu.fp_ctrl_divSqrt_killed  //wxx-runahead   || io.wb_valid
+  val killx = io.killx || mem_reg_valid && killm
   mem_reg_valid := ex_reg_valid && !killx || ex_cp_valid
   val mem_reg_inst = RegEnable(ex_reg_inst, ex_reg_valid)
   val wb_reg_valid = RegNext(mem_reg_valid && (!killm || mem_cp_valid), false.B)
@@ -809,7 +799,7 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
 
   // regfile
   val regfile = Mem(32, Bits((fLen+1).W))
-  when (load_wb) {   //wxx-runahead 表明此时写回的fp-load不是rh期间记录的load
+  when (load_wb) {
     val wdata = recode(load_wb_data, load_wb_typeTag)
     regfile(load_wb_tag) := wdata
     assert(consistent(wdata))
@@ -932,8 +922,8 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
     when (wen(i+1)) { wbInfo(i) := wbInfo(i+1) }
   }
   wen := wen >> 1
-  when (mem_wen ) {   
-    when (!killm ) {
+  when (mem_wen) {
+    when (!killm) {
       wen := wen >> 1 | memLatencyMask
     }
     for (i <- 0 until maxLatency-1) {
@@ -969,29 +959,17 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
     io.cp_resp.valid := true.B
   }
   io.cp_req.ready := !ex_reg_valid
-    //=============================  runahead  =================================================
-     io.fp_wdata:= Mux(load_wb,recode(load_wb_data, load_wb_typeTag), wdata)
-     io.fp_fma := wb_ctrl.fma
-    // io.fp_ctrl_divsqrt := wb_ctrl.div || wb_ctrl.sqrt
-    //val rcu = Module(new RCU(RCU_Params(xLen)))         
-    // when(io.l2miss)                                    //  l2miss signal needs to be corrected
-    // {
-      for (i <- 0 until 32) {
-        io.fp_out(i):= regfile(i)
-      }
-    //}
-    when(io.wb_valid)
-    {
-      for (j <- 0 until 32) {
-        regfile(j) := io.fp_in(j)
-      }
-      wen := 0.U
-    }
-    when(io.fp_longinst_wbflag){    //直接提前写回
-      regfile(io.fp_longinst_waddr) := io.fp_longinst_wdata
-      //wen:=0.U
-    }
-    //=============================  runahead  =================================================
+
+      //=============================  RAIN_runahead  =================================================
+    // val rcu = Module(new RCU(RCU_Params(xLen)))
+    //   for (i <- 0 until 32) {
+    //     io.fp_out(i):= regfile(i)
+    //   }
+    //   for (j <- 0 until 32) {
+    //     regfile(j) := io.fp_in(j)
+    //   }
+    //=============================  RAIN_runahead  =================================================
+
   val wb_toint_valid = wb_reg_valid && wb_ctrl.toint
   val wb_toint_exc = RegEnable(fpiu.io.out.bits.exc, mem_ctrl.toint)
   io.fcsr_flags.valid := wb_toint_valid || divSqrt_wen || wen(0)
@@ -1005,7 +983,7 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   io.nack_mem := write_port_busy || divSqrt_write_port_busy || divSqrt_inFlight
   io.dec <> fp_decoder.io.sigs
   def useScoreboard(f: ((Pipe, Int)) => Bool) = pipes.zipWithIndex.filter(_._1.lat > 3).map(x => f(x)).fold(false.B)(_||_)
-  io.sboard_set := !io.fp_longinst_wbflag && (wb_reg_valid && !wb_cp_valid && RegNext(useScoreboard(_._1.cond(mem_ctrl)) || mem_ctrl.div || mem_ctrl.sqrt))//wxx-runahead//&& !io.fp_longinst_wbflag
+  io.sboard_set := wb_reg_valid && !wb_cp_valid && RegNext(useScoreboard(_._1.cond(mem_ctrl)) || mem_ctrl.div || mem_ctrl.sqrt)
   io.sboard_clr := !wb_cp_valid && (divSqrt_wen || (wen(0) && useScoreboard(x => wbInfo(0).pipeid === x._2.U)))
   io.sboard_clra := waddr
   ccover(io.sboard_clr && load_wb, "DUAL_WRITEBACK", "load and FMA writeback on same cycle")
@@ -1013,8 +991,8 @@ class FPU(cfg: FPUParams)(implicit p: Parameters) extends FPUModule()(p) {
   io.illegal_rm := io.inst(14,12).isOneOf(5.U, 6.U) || io.inst(14,12) === 7.U && io.fcsr_rm >= 5.U
 
   if (cfg.divSqrt) {
-    val divSqrt_inValid = mem_reg_valid && (mem_ctrl.div || mem_ctrl.sqrt) && !divSqrt_inFlight && !io.wb_valid    //wxx-runahead
-    val divSqrt_killed = io.wb_valid || RegNext(divSqrt_inValid && killm, true.B)      //wxx-runahead
+    val divSqrt_inValid = mem_reg_valid && (mem_ctrl.div || mem_ctrl.sqrt) && !divSqrt_inFlight
+    val divSqrt_killed = RegNext(divSqrt_inValid && killm, true.B)
     when (divSqrt_inValid) {
       divSqrt_waddr := mem_reg_inst(11,7)
     }
