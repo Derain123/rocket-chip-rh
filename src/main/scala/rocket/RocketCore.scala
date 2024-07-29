@@ -295,7 +295,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     // val wb_reg_store = Reg(Bool())
     // val wb_rh_store = Reg(Bool())
 
-    val runahead_tag = RegInit(0.U(5.W))
+    val runahead_tag = RegInit(0.U(7.W))
  /*runahead code end*/
 
   val wb_reg_valid           = Reg(Bool())
@@ -946,7 +946,6 @@ when (fp_events =/= fp_eventsnext) {
 
     //dontTouch
     
-    //dontTouch(io.dmem.mshr_l2miss_tag)
     //dontTouch(l2miss_falingedge)
     //dontTouch(l2_miss_flag)
     dontTouch(db_flag)
@@ -1112,48 +1111,78 @@ when (fp_events =/= fp_eventsnext) {
 
   //val ctrl_stalldincore = ctrl_stalld
   //dontTouch(ctrl_stalldincore)
-  val s_idle :: s_runahead :: s_pass :: s_inv :: s_exit :: Nil = Enum(5)
-  val runahead_state = RegInit(s_idle)
+  val s_runahead_wait_req ::s_runahead_wait_resp :: s_runahead :: s_pass :: s_inv :: s_exit :: Nil = Enum(6)
+  val inv_events = RegInit(0.U(3.W))
+  val runahead_state = RegInit(s_runahead_wait_req)
+  val take_pc_mem_wb_reg = RegNext(take_pc_mem_wb)
+  val mshr_l2miss_tag = Mux(io.dmem.mshr_state(1) === 0.U,io.dmem.mshr_tag(0), 0.U)
   val runahead_enter = id_sboard_hazard && !io.dmem.l2hit && 
-                    (id_raddr1 === io.dmem.mshr_l2miss_tag(6, 2) || 
-                    id_raddr2 === io.dmem.mshr_l2miss_tag(6, 2) || 
-                    id_waddr === io.dmem.mshr_l2miss_tag(6, 2)) &&
-                    (io.dmem.mshr_l2miss_tag =/= 0.U) &&
+                    (id_raddr1 === mshr_l2miss_tag(6, 2) || 
+                    id_raddr2 === mshr_l2miss_tag(6, 2) || 
+                    id_waddr === mshr_l2miss_tag(6, 2)) &&
+                    (mshr_l2miss_tag =/= 0.U) &&
                     io.dmem.mshr_flag
-  val s1_runahead_posedge = RegNext(runahead_enter, init = false.B)
+  val s1_runahead_posedge = RegNext(runahead_state === s_runahead, init = false.B)
   val s2_runahead_posedge = RegNext(s1_runahead_posedge,init = false.B)
-  val runahead_posedge = !s2_runahead_posedge & s1_runahead_posedge
+  val runahead_posedge = Mux(runahead_state === s_runahead,!s2_runahead_posedge & s1_runahead_posedge,0.U)
   rcu.io.l2miss := runahead_posedge
+  
+  val s1_reg_reg_io_dmem_req_bits_addr =RegNext(io.dmem.req.bits.addr)
+  val s2_reg_io_dmem_req_bits_addr = RegNext(s1_reg_reg_io_dmem_req_bits_addr)
 
-  when(runahead_state === s_runahead && runahead_posedge) {
-    runahead_state := s_inv
-  } .elsewhen(runahead_posedge) {
-    runahead_tag := io.dmem.mshr_l2miss_tag(6, 2) 
-    runahead_state := s_runahead
-  } 
-  when(db_flag) {
-    runahead_state := s_pass
-  } 
-  when(io.dmem.mshr_state(1) > 0.U && runahead_state === s_runahead) {
-      runahead_state := s_inv
-    }
-  when(runahead_state === s_runahead) {
-    db_flag := io.dmem.resp.valid && io.dmem.resp.bits.tag(5, 1) === runahead_tag
-   
+  when(runahead_state === s_pass && io.dmem.mshr_state(0) === 0.U) {
+    db_flag := io.dmem.resp.valid && io.dmem.resp.bits.tag(5, 1) === runahead_tag(6, 2)
   } .otherwise {
     db_flag := false.B
+  } 
+  when(io.dmem.mshr_state(0) =/= 5.U) {
+    inv_events := 0.U
+  } .elsewhen(runahead_state === s_exit && io.dmem.mshr_state(0) === 5.U) {
+    inv_events := 0.U
+  } .elsewhen(runahead_state === s_runahead_wait_resp && s2_reg_io_dmem_req_bits_addr === io.dmem.resp.bits.addr && io.dmem.mshr_state(0) === 5.U && !io.dmem.resp.valid ) {
+    inv_events := inv_events + 1.U
   }
-  when(runahead_state === s_pass) {
+  when(runahead_state === s_runahead) {
+    runahead_tag := mshr_l2miss_tag
+  }.elsewhen (runahead_state === s_exit) {
+    runahead_tag := 0.U
+  }
+
+  when(runahead_state === s_runahead_wait_req && io.dmem.req.valid && io.dmem.mshr_state(0) === 5.U) {
+    runahead_state := s_runahead_wait_resp
+  }
+  when(runahead_state === s_runahead_wait_resp && s2_reg_io_dmem_req_bits_addr === io.dmem.resp.bits.addr && io.dmem.mshr_state(0) === 5.U) {
+    runahead_state := s_runahead_wait_req
+  }
+  when(runahead_state === s_runahead_wait_resp && io.dmem.mshr_state(0) =/=5.U) {
+    runahead_state := s_runahead_wait_req
+  }
+
+  when(runahead_state === s_runahead_wait_req && runahead_enter && !take_pc_mem_wb_reg && !io.dmem.req.valid) {
+    when(inv_events === 0.U) {
+      runahead_state := s_runahead
+    } .otherwise {
+      runahead_state := s_inv
+    }
+  }
+  when(runahead_state === s_runahead && io.dmem.mshr_state(0) === 8.U) {
+    runahead_state := s_pass
+  }
+
+  // when( && runahead_state === s_runahead) {
+  //     runahead_state := s_inv
+  //   }
+  when(db_flag && runahead_state === s_pass) {
     runahead_state := s_exit
   }
-  when(runahead_state === s_inv) {
+  when(runahead_state === s_inv && io.dmem.resp.valid) {
     runahead_state := s_exit
   }
-  when(runahead_state === s_exit) {
-    runahead_state := s_idle
+  when(runahead_state === s_exit && io.dmem.mshr_state(0) === 5.U) {
+    runahead_state := s_runahead_wait_req
   }
   
-
+  dontTouch(inv_events)
   dontTouch(runahead_enter)
   dontTouch(runahead_posedge)
   

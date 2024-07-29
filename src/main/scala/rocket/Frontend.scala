@@ -199,8 +199,10 @@ class FrontendModule(outer: Frontend) extends LazyModuleImp(outer)
 
   if (usingBTB) {
     val btb = Module(new BTB)
+    /*runahead code begin*/
     btb.io.l2back := io.cpu.l2back
     btb.io.l2miss := io.cpu.l2miss
+    /*runahead code end*/
     btb.io.flush := false.B
     btb.io.req.valid := false.B
     btb.io.req.bits.addr := s1_pc
